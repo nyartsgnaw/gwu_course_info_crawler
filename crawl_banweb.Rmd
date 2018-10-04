@@ -1,0 +1,274 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+my_packages <- c(
+  ####PACKAGES_SETUP####
+  'RCurl',
+  'httr',
+  'XML',
+  'rvest',  
+  'RSelenium',
+
+  
+  #dataframe tools
+  'dplyr',    # data manipulation
+  'tidytext',
+  
+  #visualization tools
+  'wordcloud',
+  
+  #semantic analysis tools
+  'tm', #get corpus
+  'SnowballC', # stemming 
+  'NLP' #root 
+
+)
+
+
+for(item in my_packages){
+  if(require(item,character.only = T)){
+    require(item,character.only = T)
+    
+  }
+  else{
+    tryCatch(
+      {
+        install.packages(item)
+      },error=function(e){
+        print(conditionMessage(e))
+      }
+    )
+  }
+  
+}
+```
+
+
+
+SUPPORT FUNCTIONS
+```{r}
+#home/major
+#get names first
+#a = loop_major()
+
+loop_major <- function(){
+  all_names <- rD$findElement('css selector','.pagebodydiv')$getElementText()
+  all_names = strsplit(all_names[[1]],'\n')[[1]]
+  all_names = all_names[sapply(all_names,function(x) nchar(x)!=0 )]
+  major_name = all_names[2]
+  course_names = all_names[-c(1,2)]
+
+  courses <- list()
+  
+  for(j in seq_along(course_names)){
+    tryCatch(
+      {
+        course_opt = paste0("tr:nth-child(",j+2,") input[name='SUB_BTN']")
+        #go
+        find_input <- rD$findElement(using='css selector',value=course_opt)
+        find_input$clickElement() #GO TO sub level
+      },error=function(e){
+        print(conditionMessage(e))
+      }
+    )
+    tryCatch(
+      {
+        course_dt = get_dt()
+      },error=function(e){
+      course_dt = data.frame(matrix(rep(0,23),nrow=1))
+      colnames(course_dt) = c("Select","CRN","Subj","Crse","Sec","Cmp","Cred","Title","Days","Time","Cap","Act","Rem","WL Cap","WL Act","WL Rem","XL Cap","XL Act","XL Rem","Instructor","Date (MM/DD)","Location","Attribute" )     
+      }
+    )
+    course_ls = list(course_dt)
+    names(course_ls) = course_names[j]#because of j start with 3
+    courses = c(courses,course_ls)
+    
+    j=j+1
+    rD$goBack()
+  #  Sys.sleep(1)
+  }
+  one_major = list(courses)
+  names(one_major) = major_name
+  return(one_major)
+}
+
+#home/major/course
+#get the table
+#a = get_dt()
+#a
+get_dt <- function(){
+  elem = rD$findElement('css selector','.datadisplaytable , .ddheader , .dddefault') #find the table
+  nodes = html_nodes(read_html(elem$getPageSource()[[1]]),'.datadisplaytable')
+  content=strsplit(html_text(nodes),'\n')[[1]]
+  temp_nums = numeric()
+  content
+  tryCatch(
+    {
+      while(length(grep("add to worksheet",content))>0){
+        temp_num = grep("add to worksheet",content)
+        temp_nums = c(temp_nums,temp_num)
+        content[temp_num] = ' ' 
+      }
+      del_nums = c(temp_nums-1,temp_nums+1)
+
+      content = content[-c(1,2,del_nums)]
+      content
+      if(length(content)%%23==0){
+          mat = matrix(content,ncol =23 ,byrow = T)
+        }
+      else{
+        #try to fix the problem that we fail to catch the blank after Days of TBA
+        position_of_CRN = grep('[0-9]{5}',content)
+        pos_mat = sapply(position_of_CRN,function(x) (x-1):(x+7))
+        pos_mat
+        j=0
+        rows = character()
+        for(i in 1:ncol(pos_mat)){
+          head_start_to_end = pos_mat[,i]
+          tail_start = pos_mat[nrow(pos_mat),i]+1
+        
+          if(i < ncol(pos_mat)){
+              tail_end = pos_mat[1,i+1]-1+j
+          }
+          else{
+            tail_end = length(content)
+          }
+          one_row = c(content[head_start_to_end],' ',content[tail_start:tail_end])
+  
+          rows = c(rows,one_row)
+          j=j+1
+        }
+        mat = matrix(c(content[1:23],rows),ncol = 23,byrow = T)
+      }
+      
+      mat
+      dt = data.frame(mat)
+      dt
+      colnames(dt)= mat[1,]
+      dt = dt[-1,]
+      rownames(dt) <- NULL
+      
+    },error=function(e){
+      print(conditionMessage(e))
+    }
+  )
+  return(dt)
+}
+
+
+
+```
+
+
+```{r}
+
+remDr$server$stop()
+remDr <- rsDriver()
+rD <- remDr$client
+#a = rD$getAllCookies()
+#rD$addCookie()
+
+rD$navigate('https://banweb.gwu.edu/PRODCartridge/twbkwbis.P_GenMenu?name=bmenu.P_MainMnu&msg=WELCOME+%3CI%3E%3Cb%3EWelcome,+Xingjian+Wang,+to+the+WWW+Information+System!%3C%2Fb%3E%3C%2FI%3E01%2F28%2F1710%3A41+pm')
+
+  ##manually go to home page
+#home.url = 'https://banweb.gwu.edu/PRODCartridge/bwckgens.p_proc_term_date'
+#rD$navigate(home.url)
+
+#home
+#gp
+
+
+majors = list()
+for(i in 1:166){#for the Fall 2017
+  tryCatch(
+    {  major_opt = paste0('option:nth-child(',i,')')
+
+  find_option <- rD$findElement('css selector',major_opt)
+  find_option$clickElement()	#select major
+  
+  find_input <- rD$findElement('css selector','input:nth-child(21)')
+  find_input$clickElement() #GO TO sub level
+  
+  tryCatch(
+    {
+      one_major = loop_major()
+    },error=function(e){
+      course_dt = data.frame(matrix(rep(0,23),nrow=1))
+      colnames(course_dt) = c("Select","CRN","Subj","Crse","Sec","Cmp","Cred","Title","Days","Time","Cap","Act","Rem","WL Cap","WL Act","WL Rem","XL Cap","XL Act","XL Rem","Instructor","Date (MM/DD)","Location","Attribute" )     
+      one_major = list(course_dt)
+      names(one_major) = 'NO COURSES PUBLISH HERE'
+    }
+  )
+
+  majors = c(majors,one_major)
+  print(i)
+#  print(names(majors[i]))
+
+  rD$refresh()
+  rD$goBack()
+  rD$refresh()
+  Sys.sleep(0.5)
+    },error=function(e){
+    print(conditionMessage(e))
+  }
+  )
+}
+
+majors
+length(majors)
+
+
+```
+
+```{r}
+
+
+Dt_Majors = data.frame(matrix(rep(0,25),nrow=1,byrow = T))
+colnames(Dt_Majors) = c("Major","Name","Select","CRN","Subj","Crse","Sec","Cmp","Cred","Title","Days","Time","Cap","Act","Rem","WL Cap","WL Act","WL Rem","XL Cap","XL Act","XL Rem","Instructor","Date (MM/DD)","Location","Attribute")
+Dt_Majors = Dt_Majors[-1,]
+
+for(i in seq_along(names(majors))){
+  one_major=majors[[i]]
+  major_name = names(majors[i])
+
+  print(i)
+  dt_major = data.frame(matrix(rep(0,24),nrow=1,byrow = T))
+  colnames(dt_major) = c("Name","Select","CRN","Subj","Crse","Sec","Cmp","Cred","Title","Days","Time","Cap","Act","Rem","WL Cap","WL Act","WL Rem","XL Cap","XL Act","XL Rem","Instructor","Date (MM/DD)","Location","Attribute")
+  dt_major = dt_major[-1,]
+  tryCatch(
+    {
+        #rbind all courses in one major
+        for(j in 1:length(one_major)){
+          course_name = names(one_major[j])
+          one_course = cbind(Name=course_name,one_major[[j]]) #add course name
+          dt_major = rbind(dt_major,one_course) #combine different courses to one
+  
+        }
+        Dt_Major = cbind(Major=major_name,dt_major) # add major name
+        Dt_Majors = rbind(Dt_Majors,Dt_Major)
+
+      }, error=function(e){
+          print(conditionMessage(e))
+    }
+  )
+}
+
+#a = data.frame(lapply(Dt_Majors,function(x) as.character(x)),stringsAsFactors = F)
+
+MAJORS= c("Data Science","Computer Science","Decision Science","Linguistics","Biostatistics","Mathematics","Statistics")
+a = sapply(MAJORS,function(x) grep(x,Dt_Majors$Major))
+
+
+Xs = numeric()
+for(x in a){
+  Xs = c(Xs,x)
+}
+x = Dt_Majors[Xs,]
+
+
+
+write.csv(x,'banweb_courses2.csv')
+
+```
